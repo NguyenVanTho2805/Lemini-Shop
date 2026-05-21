@@ -1,24 +1,19 @@
-import { readOrders, writeOrders, type AdminOrder } from '@/lib/orderStore';
-import { readPromotions, writePromotions } from '@/lib/promotionStore';
+import { getOrders, createOrder, type AdminOrder } from '@/lib/orderStore';
+import { getPromotionByCode, updatePromotion } from '@/lib/promotionStore';
+import { sendOrderConfirmation, sendNewOrderAlert } from '@/lib/email';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const email = searchParams.get('email');
-  let orders = readOrders();
-  if (email) orders = orders.filter(o => o.customerEmail === email);
-  return Response.json(orders);
+  const email = searchParams.get('email') ?? undefined;
+  return Response.json(await getOrders(email));
 }
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const orders = readOrders();
-
   const now = new Date().toISOString();
-  const code = `LM-${Date.now().toString().slice(-8)}`;
-
   const newOrder: AdminOrder = {
     id: `o_${Date.now()}`,
-    code,
+    code: `LM-${Date.now().toString().slice(-8)}`,
     customerName: body.customerName ?? '',
     customerEmail: body.customerEmail ?? '',
     customerPhone: body.customerPhone ?? '',
@@ -35,18 +30,16 @@ export async function POST(request: Request) {
     updatedAt: now,
   };
 
-  orders.unshift(newOrder);
-  writeOrders(orders);
+  const order = await createOrder(newOrder);
 
-  // Increment voucher usage count when order is placed with a voucher code
+  // Gửi email (fire-and-forget, không block response)
+  sendOrderConfirmation(order).catch(console.error);
+  sendNewOrderAlert(order).catch(console.error);
+
   if (body.voucherCode) {
-    const promos = readPromotions();
-    const idx = promos.findIndex(p => p.code === String(body.voucherCode).toUpperCase());
-    if (idx !== -1) {
-      promos[idx] = { ...promos[idx], usageCount: promos[idx].usageCount + 1 };
-      writePromotions(promos);
-    }
+    const promo = await getPromotionByCode(String(body.voucherCode));
+    if (promo) await updatePromotion(promo.id, { usageCount: promo.usageCount + 1 });
   }
 
-  return Response.json(newOrder, { status: 201 });
+  return Response.json(order, { status: 201 });
 }

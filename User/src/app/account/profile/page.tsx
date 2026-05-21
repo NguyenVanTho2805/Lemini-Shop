@@ -34,8 +34,7 @@ export default function ProfilePage() {
     const phone = (form.elements.namedItem('phone') as HTMLInputElement).value;
     const address = (form.elements.namedItem('address') as HTMLInputElement).value;
     setSaving(true);
-    await new Promise(r => setTimeout(r, 700));
-    updateProfile({ name, phone, address });
+    await updateProfile({ name, phone, address });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -53,7 +52,7 @@ export default function ProfilePage() {
     setPwError('');
     const res = await changePassword(current, next);
     setSavePw(false);
-    if (!res.ok) { setPwError(res.error || 'Lỗi'); return; }
+    if (!res.ok) { setPwError(res.error ?? 'Lỗi'); return; }
     setSavedPw(true);
     form.reset();
     setTimeout(() => setSavedPw(false), 2500);

@@ -16,6 +16,7 @@ export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
@@ -25,6 +26,8 @@ export default function Header() {
   const { count: wishCount } = useWishlist();
 
   const initials = user?.name.split(' ').map(w => w[0]).slice(-2).join('').toUpperCase() ?? '';
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
@@ -207,7 +210,7 @@ export default function Header() {
               onClick={() => cartOpen ? closeCart() : openCart()}
             >
               <ShoppingBag size={20} />
-              {cartCount > 0 && (
+              {mounted && cartCount > 0 && (
                 <span className="cart-badge">{cartCount > 9 ? '9+' : cartCount}</span>
               )}
             </button>

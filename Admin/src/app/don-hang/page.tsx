@@ -109,7 +109,7 @@ export default function OrdersPage() {
   const printDeliverySlip = (order: AdminOrder) => {
     const win = window.open("", "_blank", "width=640,height=900");
     if (!win) return;
-    const paymentLabel = { cod: "Thanh toán khi nhận hàng (COD)", bank: "Chuyển khoản ngân hàng", momo: "Ví MoMo" }[order.paymentMethod ?? "cod"] ?? order.paymentMethod;
+    const paymentLabel = ({ cod: "Thanh toán khi nhận hàng (COD)", bank: "Chuyển khoản ngân hàng", momo: "Ví MoMo", vnpay: "VNPay" } as Record<string, string>)[order.paymentMethod ?? "cod"] ?? order.paymentMethod;
     const subtotal = order.items.reduce((s, i) => s + i.price * i.quantity, 0);
     win.document.write(`<!DOCTYPE html>
 <html lang="vi"><head><meta charset="UTF-8">
@@ -381,7 +381,7 @@ export default function OrdersPage() {
                         <div>🚚 Phí ship: {formatVND(order.shippingFee)}</div>
                         {order.paymentMethod && (
                           <div>💳 Thanh toán: <strong>
-                            {{ cod: "COD (Tiền mặt)", bank: "Chuyển khoản", momo: "MoMo" }[order.paymentMethod] ?? order.paymentMethod}
+                            {({ cod: "COD (Tiền mặt)", bank: "Chuyển khoản", momo: "MoMo", vnpay: "VNPay" } as Record<string, string>)[order.paymentMethod] ?? order.paymentMethod}
                           </strong></div>
                         )}
                         {order.note && <div style={{ gridColumn: "1/-1" }}>📝 {order.note}</div>}

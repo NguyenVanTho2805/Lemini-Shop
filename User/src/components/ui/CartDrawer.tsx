@@ -42,7 +42,7 @@ export default function CartDrawer() {
   const [step, setStep] = useState<Step>('cart');
   const [giftWrap, setGiftWrap] = useState(false);
   const [form, setForm] = useState({ name: '', phone: '', address: '', note: '' });
-  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'bank' | 'momo'>('cod');
+  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'bank' | 'momo' | 'vnpay'>('cod');
   const [voucherCode, setVoucherCode] = useState('');
   const [voucher, setVoucher] = useState<Voucher | null>(null);
   const [voucherError, setVoucherError] = useState('');
@@ -138,6 +138,23 @@ export default function CartDrawer() {
         voucherCode: voucher?.code,
         paymentMethod,
       });
+
+      if (paymentMethod === 'vnpay') {
+        const res = await fetch('/api/payment/vnpay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: order.id, orderCode: order.code, amount: total }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error ?? 'Không thể tạo liên kết VNPay');
+        }
+        const { paymentUrl } = await res.json() as { paymentUrl: string };
+        clearCart();
+        window.location.href = paymentUrl;
+        return;
+      }
+
       setLastOrderCode(order.code);
       clearCart();
       setStep('success');
@@ -574,7 +591,8 @@ export default function CartDrawer() {
                     { id: 'cod', label: 'Thanh toán khi nhận hàng (COD)', icon: '💵' },
                     { id: 'bank', label: 'Chuyển khoản ngân hàng', icon: '🏦' },
                     { id: 'momo', label: 'Ví MoMo', icon: '💜' },
-                  ] as { id: 'cod' | 'bank' | 'momo'; label: string; icon: string }[]).map(opt => (
+                    { id: 'vnpay', label: 'Thanh toán VNPay', icon: '🏧' },
+                  ] as { id: 'cod' | 'bank' | 'momo' | 'vnpay'; label: string; icon: string }[]).map(opt => (
                     <label key={opt.id} style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '10px 14px',
@@ -651,7 +669,11 @@ export default function CartDrawer() {
                 cursor: placing ? 'not-allowed' : 'pointer',
                 transition: 'background 0.2s',
               }}>
-                {placing ? 'Đang xử lý...' : `XÁC NHẬN ĐẶT HÀNG · ${formatPrice(total)}`}
+                {placing
+                  ? 'Đang xử lý...'
+                  : paymentMethod === 'vnpay'
+                    ? `THANH TOÁN VNPAY · ${formatPrice(total)}`
+                    : `XÁC NHẬN ĐẶT HÀNG · ${formatPrice(total)}`}
               </button>
             </div>
           </>

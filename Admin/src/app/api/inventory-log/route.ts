@@ -1,13 +1,12 @@
-import { readLog, appendLog } from '@/lib/inventoryLogStore';
+import { getLog, appendLog } from '@/lib/inventoryLogStore';
 
 export async function GET() {
-  const entries = [...readLog()].reverse().slice(0, 50);
-  return Response.json(entries);
+  return Response.json(await getLog(50));
 }
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const entry = appendLog({
+  const entry = await appendLog({
     productId: body.productId,
     productName: body.productName,
     previousStock: body.previousStock,

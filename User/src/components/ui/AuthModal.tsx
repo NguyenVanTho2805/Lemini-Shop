@@ -97,7 +97,7 @@ export default function AuthModal() {
     setOauthLoading(provider);
     setError('');
     const res = await loginWithOAuth(provider);
-    if (!res.ok) { setError('Đăng nhập thất bại. Vui lòng thử lại.'); setOauthLoading(null); }
+    if (!res.ok) { setError(res.error || 'Đăng nhập thất bại. Vui lòng thử lại.'); setOauthLoading(null); }
   };
 
   return (

@@ -1,8 +1,9 @@
-import { readOrders, writeOrders } from '@/lib/orderStore';
+import { getOrderById, updateOrder, deleteOrder } from '@/lib/orderStore';
+import { sendOrderStatusUpdate } from '@/lib/email';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const order = readOrders().find(o => o.id === id);
+  const order = await getOrderById(id);
   if (!order) return Response.json({ error: 'Not found' }, { status: 404 });
   return Response.json(order);
 }
@@ -10,18 +11,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await request.json();
-  const orders = readOrders();
-  const idx = orders.findIndex(o => o.id === id);
-  if (idx === -1) return Response.json({ error: 'Not found' }, { status: 404 });
-
-  orders[idx] = { ...orders[idx], ...body, updatedAt: new Date().toISOString() };
-  writeOrders(orders);
-  return Response.json(orders[idx]);
+  const prev = await getOrderById(id);
+  const order = await updateOrder(id, body);
+  if (!order) return Response.json({ error: 'Not found' }, { status: 404 });
+  // Gửi email khi status thay đổi
+  if (body.status && prev?.status !== body.status) {
+    sendOrderStatusUpdate(order).catch(console.error);
+  }
+  return Response.json(order);
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const orders = readOrders().filter(o => o.id !== id);
-  writeOrders(orders);
+  await deleteOrder(id);
   return Response.json({ ok: true });
 }

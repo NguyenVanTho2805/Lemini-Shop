@@ -1,6 +1,8 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '@/lib/supabase';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 export interface User {
   id: string;
@@ -9,16 +11,6 @@ export interface User {
   phone?: string;
   address?: string;
   avatar?: string;
-  joinedAt: string;
-}
-
-interface StoredAccount {
-  id: string;
-  email: string;
-  name: string;
-  password: string;
-  phone?: string;
-  address?: string;
   joinedAt: string;
 }
 
@@ -33,66 +25,42 @@ interface AuthContextType {
   loginWithOAuth: (provider: 'google' | 'facebook') => Promise<{ ok: boolean; error?: string }>;
   register: (name: string, email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
-  updateProfile: (data: Partial<User>) => void;
+  updateProfile: (data: Partial<User>) => Promise<void>;
   changePassword: (current: string, next: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const USER_KEY = 'lemini_user';
-const ACCOUNTS_KEY = 'lemini_accounts';
-
-const SEED_ACCOUNTS: StoredAccount[] = [
-  {
-    id: 'u1',
-    email: 'demo@lemini.com',
-    password: '123456',
-    name: 'Nguyễn Thị Lan',
-    phone: '0912345678',
-    address: '12 Phố Huế, Hai Bà Trưng, Hà Nội',
-    joinedAt: '2024-01-15',
-  },
-];
-
-function loadAccounts(): StoredAccount[] {
-  try {
-    const saved = localStorage.getItem(ACCOUNTS_KEY);
-    if (!saved) return SEED_ACCOUNTS;
-    const parsed: StoredAccount[] = JSON.parse(saved);
-    // Merge seed accounts (preserving password overrides) with extra registered accounts
-    const merged = SEED_ACCOUNTS.map(seed => {
-      const override = parsed.find(a => a.id === seed.id);
-      return override ? { ...seed, ...override } : seed;
-    });
-    const extras = parsed.filter(a => !SEED_ACCOUNTS.find(s => s.id === a.id));
-    return [...merged, ...extras];
-  } catch {
-    return SEED_ACCOUNTS;
-  }
+async function fetchProfile(sbUser: SupabaseUser): Promise<User> {
+  const { data } = await supabase.from('profiles').select('*').eq('id', sbUser.id).maybeSingle();
+  return {
+    id: sbUser.id,
+    email: sbUser.email ?? '',
+    name: (data?.name as string) || sbUser.email?.split('@')[0] || 'Người dùng',
+    phone: (data?.phone as string) || undefined,
+    address: (data?.address as string) || undefined,
+    avatar: (data?.avatar as string) || undefined,
+    joinedAt: ((data?.joined_at as string) ?? sbUser.created_at ?? new Date().toISOString()).split('T')[0],
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [accounts, setAccounts] = useState<StoredAccount[]>(SEED_ACCOUNTS);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalView, setAuthModalView] = useState<'login' | 'register' | 'forgot'>('login');
 
   useEffect(() => {
-    setAccounts(loadAccounts());
-    try {
-      const saved = localStorage.getItem(USER_KEY);
-      if (saved) setUser(JSON.parse(saved));
-    } catch {}
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) fetchProfile(session.user).then(setUser);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) fetchProfile(session.user).then(setUser);
+      else setUser(null);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
-
-  const persistAccounts = (acc: StoredAccount[]) => {
-    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(acc));
-  };
-
-  const persistUser = (u: User | null) => {
-    if (u) localStorage.setItem(USER_KEY, JSON.stringify(u));
-    else localStorage.removeItem(USER_KEY);
-  };
 
   const openAuthModal = (view: 'login' | 'register' | 'forgot' = 'login') => {
     setAuthModalView(view);
@@ -102,93 +70,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const closeAuthModal = () => setAuthModalOpen(false);
 
   const login = async (email: string, password: string) => {
-    await new Promise(r => setTimeout(r, 700));
-    const found = accounts.find(a => a.email === email);
-    if (!found || found.password !== password) {
-      return { ok: false, error: 'Email hoặc mật khẩu không đúng.' };
-    }
-    const { password: _, ...userData } = found;
-    setUser(userData);
-    persistUser(userData);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { ok: false, error: 'Email hoặc mật khẩu không đúng.' };
     setAuthModalOpen(false);
     return { ok: true };
   };
 
   const loginWithOAuth = async (provider: 'google' | 'facebook') => {
-    await new Promise(r => setTimeout(r, 900));
-    const email = `${provider}.user@lemini.com`;
-    let account = accounts.find(a => a.email === email);
-    if (!account) {
-      account = {
-        id: `u_${provider}_${Date.now()}`,
-        email,
-        name: provider === 'google' ? 'Người dùng Google' : 'Người dùng Facebook',
-        password: '',
-        joinedAt: new Date().toISOString().split('T')[0],
-      };
-      const updated = [...accounts, account];
-      setAccounts(updated);
-      persistAccounts(updated);
-    }
-    const { password: _, ...userData } = account;
-    setUser(userData);
-    persistUser(userData);
-    setAuthModalOpen(false);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: provider === 'facebook' ? 'facebook' : 'google',
+      options: { redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/` : '/' },
+    });
+    if (error) return { ok: false, error: error.message };
     return { ok: true };
   };
 
   const register = async (name: string, email: string, password: string) => {
-    await new Promise(r => setTimeout(r, 700));
-    if (accounts.find(a => a.email === email)) {
-      return { ok: false, error: 'Email này đã được đăng ký.' };
-    }
-    const newAccount: StoredAccount = {
-      id: `u_${Date.now()}`,
-      name,
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      joinedAt: new Date().toISOString().split('T')[0],
-    };
-    const updated = [...accounts, newAccount];
-    setAccounts(updated);
-    persistAccounts(updated);
-    const { password: _, ...userData } = newAccount;
-    setUser(userData);
-    persistUser(userData);
+      options: { data: { name } },
+    });
+    if (error) {
+      if (error.message.toLowerCase().includes('already')) {
+        return { ok: false, error: 'Email này đã được đăng ký.' };
+      }
+      return { ok: false, error: error.message };
+    }
+    if (data.user && !data.session) {
+      return { ok: false, error: 'Kiểm tra email để xác nhận tài khoản trước khi đăng nhập.' };
+    }
+    if (data.user) {
+      await supabase.from('profiles').upsert({
+        id: data.user.id,
+        email,
+        name,
+        joined_at: new Date().toISOString(),
+      });
+    }
     setAuthModalOpen(false);
     return { ok: true };
   };
 
   const logout = () => {
     setUser(null);
-    persistUser(null);
+    supabase.auth.signOut();
   };
 
-  const updateProfile = (data: Partial<User>) => {
+  const updateProfile = async (data: Partial<User>) => {
     if (!user) return;
     const updated = { ...user, ...data };
     setUser(updated);
-    persistUser(updated);
-    setAccounts(prev => {
-      const next = prev.map(a => a.email === user.email ? { ...a, ...data } : a);
-      persistAccounts(next);
-      return next;
+    await supabase.from('profiles').upsert({
+      id: user.id,
+      email: user.email,
+      name: updated.name,
+      phone: updated.phone ?? null,
+      address: updated.address ?? null,
+      avatar: updated.avatar ?? null,
     });
   };
 
   const changePassword = async (current: string, next: string) => {
-    await new Promise(r => setTimeout(r, 700));
-    const account = accounts.find(a => a.email === user?.email);
-    if (!account || account.password !== current) {
-      return { ok: false, error: 'Mật khẩu hiện tại không đúng.' };
-    }
-    setAccounts(prev => {
-      const updated = prev.map(a =>
-        a.email === user!.email ? { ...a, password: next } : a
-      );
-      persistAccounts(updated);
-      return updated;
+    const { error: verifyErr } = await supabase.auth.signInWithPassword({
+      email: user!.email,
+      password: current,
     });
+    if (verifyErr) return { ok: false, error: 'Mật khẩu hiện tại không đúng.' };
+    const { error } = await supabase.auth.updateUser({ password: next });
+    if (error) return { ok: false, error: error.message };
     return { ok: true };
   };
 

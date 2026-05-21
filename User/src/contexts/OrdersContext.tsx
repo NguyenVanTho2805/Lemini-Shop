@@ -17,7 +17,7 @@ export interface PlaceOrderPayload {
   discount: number;
   voucherCode?: string;
   note?: string;
-  paymentMethod?: 'cod' | 'bank' | 'momo';
+  paymentMethod?: 'cod' | 'bank' | 'momo' | 'vnpay';
 }
 
 interface OrdersContextType {

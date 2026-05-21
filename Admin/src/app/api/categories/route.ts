@@ -1,13 +1,12 @@
-import { readCategories, writeCategories, type AdminCategory } from '@/lib/categoryStore';
+import { getCategories, createCategory, type AdminCategory } from '@/lib/categoryStore';
 
 export async function GET() {
-  return Response.json(readCategories());
+  return Response.json(await getCategories());
 }
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const cats = readCategories();
-
+  const cats = await getCategories();
   const newCat: AdminCategory = {
     id: `c_${Date.now()}`,
     name: body.name ?? '',
@@ -16,8 +15,6 @@ export async function POST(request: Request) {
     description: body.description ?? '',
     order: cats.length + 1,
   };
-
-  cats.push(newCat);
-  writeCategories(cats);
-  return Response.json(newCat, { status: 201 });
+  const cat = await createCategory(newCat);
+  return Response.json(cat, { status: 201 });
 }
